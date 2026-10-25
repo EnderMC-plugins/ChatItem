@@ -29,7 +29,7 @@ public class Storage {
 		configVersion = conf.getInt("config-version", 13);
 		checkConfigVersion();
 		this.manager = conf.getString("manager", "auto");
-		if(manager == "both")
+		if(manager.equalsIgnoreCase("both"))
 			manager = "all";
 		language = conf.getString("general.language", Translation.DEFAULT_LANGUAGE);
 		debug = conf.getBoolean("debug", false);

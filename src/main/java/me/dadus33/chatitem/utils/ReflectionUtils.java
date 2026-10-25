@@ -167,7 +167,6 @@ public class ReflectionUtils {
 	 * Get the first object which have the searching for class type
 	 * 
 	 * @param from the object where we will try to find the field
-	 * @param clazz the class that have to define the field
 	 * @param searchingFor the class of the required field
 	 * @return the field (or null if not found)
 	 * @throws Exception if something gone wrong
@@ -224,8 +223,7 @@ public class ReflectionUtils {
 
 	/**
 	 * Get the first field which have the searching for class type
-	 * 
-	 * @param from the object where we will try to find the field
+	 *
 	 * @param clazz the class that have to define the field
 	 * @param searchingFor the class of the required field
 	 * @return the field (or null if not found)

@@ -107,7 +107,7 @@ public class Utils {
 		return ROMAN_KEYS.get(l) + toRoman(number - l);
 	}
 
-	@SuppressWarnings("deprecation")
+	@SuppressWarnings({ "deprecation", "removal" }) // getName() is the only way to get the name with MC 1.8
 	public static String getEnchantName(Enchantment enchant) {
 		String name = ENCHANTS_NAMES.get(enchant.getName());
 		if (name == null) {

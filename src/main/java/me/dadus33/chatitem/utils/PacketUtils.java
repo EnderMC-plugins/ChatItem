@@ -138,10 +138,9 @@ public class PacketUtils {
 	}
 
 	/**
-	 * Get NMS entity player of specified one
-	 * 
-	 * @param p the player that we want the NMS entity player
-	 * @return the entity player
+	 * Get the NMS player list of the server
+	 *
+	 * @return the player list
 	 */
 	public static Object getCraftServer() {
 		try {

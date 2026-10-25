@@ -182,7 +182,7 @@ public abstract class ChatManager {
 
 	/**
 	 * Get the name of item according to player & config<br>
-	 * Prefer use {@link #getNameOfItem(Player, ItemStack, Storage)} if you want
+	 * Prefer use {@link #getNameOfItem(Player, ItemStack, Player, Storage)} if you want
 	 * take in count the empty item
 	 * 
 	 * @param viewer the player
@@ -373,7 +373,7 @@ public abstract class ChatManager {
 	}
 
 	public static boolean isTesting(String actual) {
-		return inTest != null && (inTest == "both" || inTest == "all" || inTest.equalsIgnoreCase(actual));
+		return inTest != null && (inTest.equalsIgnoreCase("both") || inTest.equalsIgnoreCase("all") || inTest.equalsIgnoreCase(actual));
 	}
 
 	public static void setTesting(String actual) {
@@ -386,12 +386,12 @@ public abstract class ChatManager {
 		String selected = ChatItem.getInstance().getStorage().manager;
 		if (selected.equalsIgnoreCase("both") || selected.equalsIgnoreCase("all"))
 			return true;
-		if (selected == "auto") {
-			if (Utils.IS_PAPER && actual == "paper")
+		if (selected.equalsIgnoreCase("auto")) {
+			if (Utils.IS_PAPER && actual.equals("paper"))
 				return true;
-			else if (actual == "packet" && ChatItem.getPluginThatRequirePacket().stream().map(Bukkit.getPluginManager()::getPlugin).anyMatch(Objects::nonNull))
+			else if (actual.equals("packet") && ChatItem.getPluginThatRequirePacket().stream().map(Bukkit.getPluginManager()::getPlugin).anyMatch(Objects::nonNull))
 				return true;
-			else if (actual == "chat")
+			else if (actual.equals("chat"))
 				return true;
 		}
 		return selected.equalsIgnoreCase(actual);
