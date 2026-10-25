@@ -3,6 +3,8 @@ package me.dadus33.chatitem.chatmanager;
 import static me.dadus33.chatitem.chatmanager.ChatManager.SEPARATOR;
 import static me.dadus33.chatitem.chatmanager.ChatManager.SEPARATOR_END;
 
+import java.util.List;
+
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -28,25 +30,32 @@ public class ChatEventListener implements Listener {
 		}
 		Player p = e.getPlayer();
 		String oldMsg = e.getMessage();
-		ItemSlot slot = ItemSlot.getItemSlotFromMessage(e.getMessage());
-		if (slot == null) {
-			ChatItem.debug("(general) not found placeholders in: " + e.getMessage());
+		List<ItemSlot> slots = ItemSlot.getItemSlotsFromMessage(oldMsg);
+		if (slots.isEmpty()) {
+			ChatItem.debug("(general) not found placeholders in: " + oldMsg);
 			return;
 		}
-		ChatAction action = ChatManager.getChatAction(slot, p);
-		if(!ChatManager.canUsePlaceholder(p, action, slot, e))
+		String s = oldMsg;
+		for (ItemSlot slot : slots) { // each kind of placeholder has it's own chat
+			ChatAction action = ChatManager.getChatAction(slot, p);
+			if (!ChatManager.canUsePlaceholder(p, action, slot, e)) {
+				if (e.isCancelled())
+					return;
+				continue;
+			}
+			Chat c = Chat.create(p, oldMsg, action);
+			ChatItem.debug("(general) Set placeholder to message " + c + " for " + slot);
+			s = slot.replacePlaceholders(s, SEPARATOR + Integer.toString(c.getId()) + SEPARATOR_END);
+		}
+		if (s.equals(oldMsg))
 			return;
-		String s = slot.replacePlaceholdersToSeparator(e.getMessage());
 		if (Utils.countMatches(s, Character.toString(ChatManager.SEPARATOR)) > getStorage().limit) {
 			e.setCancelled(true);
 			if (!getStorage().messageLimit.isEmpty())
 				p.sendMessage(getStorage().messageLimit);
 			return;
 		}
-
-		Chat c = Chat.create(p, oldMsg, action);
-		ChatItem.debug("(general) Set placeholder to message " + c);
-		e.setMessage(s.replace(Character.toString(ChatManager.SEPARATOR), SEPARATOR + Integer.toString(c.getId()) + SEPARATOR_END));
+		e.setMessage(s);
 		e.setFormat(e.getFormat().replace(oldMsg, e.getMessage())); // set own message for plugin that already put the message into the format
 	}
 }

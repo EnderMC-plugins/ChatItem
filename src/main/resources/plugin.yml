@@ -3,7 +3,7 @@ main: me.dadus33.chatitem.ChatItem
 version: ${project.version}
 
 softdepend: [ViaVersion, ProtocolSupport, ProtocolLib, LangUtils, HexNicks, EcoEnchants, DiscordSRV, ChatControl, ChatManager, PlaceholderAPI, MVdWPlaceholderAPI, Vault]
-authors: [dadus33, WOLFI3654, Elikill58]
+authors: [dadus33, WOLFI3654, Elikill58, herrlamatv]
 api-version: 1.13
 folia-supported: true
 

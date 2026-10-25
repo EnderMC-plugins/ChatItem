@@ -1,6 +1,8 @@
 package me.dadus33.chatitem.chatmanager.v2;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import org.bukkit.Bukkit;
@@ -57,26 +59,39 @@ public class ChatListener implements Listener {
 			return;
 		}
 		Player p = e.getPlayer();
-		String targetReplace = ChatManager.SEPARATOR + "";
-		if(ChatManager.containsSeparator(e.getMessage())) { // fix for v1
+		String format = e.getFormat();
+		// fix for v1: put back all placeholders
+		for (int i = 0; i < 50 && ChatManager.containsSeparator(e.getMessage()); i++) {
 			Chat chat = Chat.getFrom(e.getMessage());
-			if(chat != null) {
-				targetReplace = ChatManager.SEPARATOR + "" + chat.getId() + ChatManager.SEPARATOR_END;
-				e.setMessage(ChatManager.replaceSeparator(chat, e.getMessage(), chat.getSlot().getPlaceholders().get(0)));
-			}
+			if(chat == null)
+				break;
+			String placeholder = chat.getSlot().getPlaceholders().get(0);
+			format = format.replace(ChatManager.addSeparator(chat.getId()), placeholder);
+			e.setMessage(ChatManager.replaceSeparator(chat, e.getMessage(), placeholder));
 		}
-		ItemSlot slot = ItemSlot.getItemSlotFromMessage(e.getMessage());
-		if (slot == null) { // if not found
+		List<ItemSlot> slots = ItemSlot.getItemSlotsFromMessage(e.getMessage());
+		if (slots.isEmpty()) { // if not found
 			ChatItem.debug("(v2) Can't found placeholder in: " + e.getMessage() + " > " + PlayerNamerManager.getPlayerNamer().getName(p));
 			return;
 		}
-		ChatAction action = ChatManager.getChatAction(slot, p);
-		if(!ChatManager.canUsePlaceholder(p, action, slot, e))
+		// each kind of placeholder has it's own action, showed where "addSeparator(index)" is
+		List<ChatAction> actions = new ArrayList<>();
+		String defMsg = e.getMessage();
+		for (ItemSlot slot : slots) {
+			ChatAction action = ChatManager.getChatAction(slot, p);
+			if(!ChatManager.canUsePlaceholder(p, action, slot, e)) {
+				if (e.isCancelled())
+					return;
+				continue;
+			}
+			defMsg = slot.replacePlaceholders(defMsg, ChatManager.addSeparator(actions.size()));
+			actions.add(action);
+		}
+		if (actions.isEmpty())
 			return;
 		e.setCancelled(true);
-		String format = e.getFormat().replace(targetReplace, slot.getPlaceholders().get(0));
+		format = format.replace(Character.toString(ChatManager.SEPARATOR), actions.get(0).getSlot().getPlaceholders().get(0));
 		ChatItem.debug("(v2) Using format: " + format + " and message: " + e.getMessage());
-		String defMsg = slot.replacePlaceholdersToSeparator(e.getMessage());
 		if (Utils.countMatches(defMsg, Character.toString(ChatManager.SEPARATOR)) > c.limit) {
 			if (!c.messageLimit.isEmpty())
 				p.sendMessage(c.messageLimit);
@@ -88,14 +103,18 @@ public class ChatListener implements Listener {
 		} else {
 			msg = format.replace(e.getMessage(), defMsg);
 		}
-		String itemName = ChatManager.getNameForChatAction(p, action, c);
-		String loggedMessage = msg.replace(ChatManager.SEPARATOR + "", itemName);
+		String loggedMessage = msg, discordMessage = defMsg;
+		for (int i = 0; i < actions.size(); i++) {
+			String name = ChatManager.getNameForChatAction(p, actions.get(i), c);
+			loggedMessage = loggedMessage.replace(ChatManager.addSeparator(i), name);
+			discordMessage = discordMessage.replace(ChatManager.addSeparator(i), name);
+		}
 		Bukkit.getConsoleSender().sendMessage(c.replaceInConsole ? loggedMessage : msg); // show in log
 		if (ChatItem.discordSrvSupport)
-			DiscordSrvSupport.sendChatMessage(p, defMsg.replace(ChatManager.SEPARATOR + "", itemName), e);
+			DiscordSrvSupport.sendChatMessage(p, discordMessage, e);
 		Set<Player> recipients = e.getRecipients().isEmpty() ? new HashSet<>(Bukkit.getOnlinePlayers()) : e.getRecipients();
-		ChatItem.debug("(v2) Msg: " + ChatItem.replace(p, msg).replace(ChatColor.COLOR_CHAR, '&') + ", format: " + format + " to " + recipients.size() + " players");
-		recipients.forEach((pl) -> ChatItem.getPlatform().sendMessage(pl, p, action, ChatItem.replace(p, msg)));
+		ChatItem.debug("(v2) Msg: " + ChatItem.replace(p, msg).replace(ChatColor.COLOR_CHAR, '&') + ", format: " + format + " to " + recipients.size() + " players, " + actions.size() + " actions");
+		recipients.forEach((pl) -> ChatItem.getPlatform().sendMessage(pl, p, actions, ChatItem.replace(p, msg)));
 		if (c.cooldown > 0 && !p.hasPermission("chatitem.ignore-cooldown"))
 			ChatManager.applyCooldown(p);
 	}

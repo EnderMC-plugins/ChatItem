@@ -4,7 +4,10 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.Arrays;
+import java.util.List;
 
 import me.dadus33.chatitem.ChatItem;
 
@@ -191,6 +194,31 @@ public class ReflectionUtils {
 		}
 		if(!clazz.getSuperclass().equals(Object.class))
 			return getFirstWith(from, clazz.getSuperclass(), searchingFor);
+		return null;
+	}
+
+	/**
+	 * Get the first list which contains the searching for class type, according to
+	 * the generic type of the field. Useful when the name of the field depends on
+	 * mappings.
+	 *
+	 * @param from the object where we will try to find the field
+	 * @param elementType the class of the list elements
+	 * @return the list (or null if not found)
+	 * @throws Exception if something gone wrong
+	 */
+	public static List<?> getFirstListWith(Object from, Class<?> elementType) throws Exception {
+		for (Class<?> clazz = from.getClass(); clazz != null && !clazz.equals(Object.class); clazz = clazz.getSuperclass()) {
+			for (Field f : clazz.getDeclaredFields()) {
+				if (!List.class.isAssignableFrom(f.getType()) || Modifier.isStatic(f.getModifiers()) || !(f.getGenericType() instanceof ParameterizedType))
+					continue;
+				Type[] args = ((ParameterizedType) f.getGenericType()).getActualTypeArguments();
+				if (args.length == 1 && args[0].equals(elementType)) {
+					f.setAccessible(true);
+					return (List<?>) f.get(from);
+				}
+			}
+		}
 		return null;
 	}
 

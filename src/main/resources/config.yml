@@ -1,10 +1,9 @@
 # Config for ChatItem
 # For info visit
-# Spigotmc: https://www.spigotmc.org/resources/19064/
-# Discord: https://discord.gg/yng5PPf62h
+# source: https://github.com/EnderMC-plugins/ChatItem
  
 # Version info, DON'T TOUCH
-config-version: 13
+config-version: 14
  
 # By default, it's in "all" mode.
 #
@@ -19,6 +18,18 @@ config-version: 13
 # You can replace 'both' by another mode that should correspond to what you want.
 # If you don't know which one use, come on discord (link at begin of config or in spigotmc)
 manager: "all"
+
+# Change how the player is shown in chat (instead of the default "<Name>"), for all messages
+chat-format:
+  enabled: false
+  # How the player is shown. {prefix} and {suffix} are defined below,
+  # {name} is the name of the player, {display-name} the name given by other plugins (nicknames)
+  format: "{prefix}{name}"
+  # Can use PlaceholderAPI placeholders. For LuckPerms, it needs PlaceholderAPI with the LuckPerms expansion
+  prefix: "%luckperms_prefix%"
+  suffix: ""
+  # Between the player and the message
+  separator: "&7: &f"
 
 #General configuration
 general:
@@ -82,12 +93,44 @@ general:
       - "[ec]"
       - "{ec}"
       show: "&6%name%'s enderchest is %item%"
+    # Show the money of the player (needs Vault and an economy plugin)
+    money:
+      enabled: true
+      keys:
+      - "[money]"
+      - "{money}"
+      show: "&6%name%'s money: %item%"
+    # Show the position of the player. Click on it to copy it
+    position:
+      enabled: true
+      keys:
+      - "[pos]"
+      - "{pos}"
+      show: "&6%name%'s position: %item%"
+    # Show the health of the player
+    health:
+      enabled: true
+      keys:
+      - "[health]"
+      - "[hp]"
+      - "{health}"
+      - "{hp}"
+      show: "&6%name%'s health: %item%"
+    # Show the experience level of the player
+    level:
+      enabled: true
+      keys:
+      - "[lvl]"
+      - "[level]"
+      - "{lvl}"
+      - "{level}"
+      show: "&6%name%'s level: %item%"
     one_item:
       # Time in seconds before the placeholder expire
       time-expire: 1800
 
   # The format of the item placeholders.
-  name-format: "&b&l&o{name}{amount}&r"
+  name-format: "&a&o{name}{amount}&r"
   # The format of the {amount} placeholder.
   # {times} correspond to amount of item
   amount-format: " x{times}"
@@ -110,7 +153,7 @@ general:
     # Should we completely disable users being able to show their hands off
     disabled: false
     # The name of the hand chat message.
-    name: "&b&l&o{display-name}&b&l&o's hand"
+    name: "&a&o{display-name}&a&o's hand"
     # The lore of the hand chat message.
     tooltip:
       - "&7Nothing to see here"
@@ -155,7 +198,8 @@ general:
   - "SOME_ITEM"
   # Check if the plugin have update
   check-update: true
-  language: "en_gb"
+  # Language of item names. Available: de_de, de_ch, en_gb, fr_fr
+  language: "de_de"
   sub-commands:
     broadcast: true
     show: true
@@ -301,6 +345,22 @@ messages:
     name: "%cible%'s enderchest"
     chat: "%cible%'s enderchest"
     hover: "&7Click to see enderchest"
+  # Placeholders: %cible% (player name), %money%
+  money:
+    chat: "&6%money%"
+    hover: "&7Money of &e%cible%&7: &6%money%"
+  # Placeholders: %cible%, %x%, %y%, %z%, %world%
+  position:
+    chat: "&e%x% %y% %z%"
+    hover: "&7Position of &e%cible%\n&7World: &e%world%\n&7X: &e%x% &7Y: &e%y% &7Z: &e%z%\n&7Click to copy"
+  # Placeholders: %cible%, %health%, %max_health%
+  health:
+    chat: "&c%health% \u2764"
+    hover: "&7Health of &e%cible%&7: &c%health%&7/&c%max_health% \u2764"
+  # Placeholders: %cible%, %level%
+  level:
+    chat: "&aLevel %level%"
+    hover: "&7Level of &e%cible%&7: &a%level%"
 
 # If ChatItem send message using DiscordSRV
 # This option will be ignored if you don't have it

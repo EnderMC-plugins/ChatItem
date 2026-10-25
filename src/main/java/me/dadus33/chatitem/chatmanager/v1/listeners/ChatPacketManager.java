@@ -123,65 +123,99 @@ public class ChatPacketManager extends PacketHandler {
 		e.setCancelled(true); // We cancel the packet as we're going to resends it anyways
 		CompletableFuture.runAsync(() -> {
 			Player p = e.getPlayer();
-			String message = null;
 			try {
-				if(chat.getAction().hasItem()) {
-					ItemStack item = ChatManager.getUsableItem(itemPlayer, chat.getSlot());
-					if (!ItemUtils.isEmpty(item)) {
-						ItemStack copy = item.clone();
-	
-						if (ItemPlayer.getPlayer(p).isBuggedClient()) { // if the guy that will receive it is bugged
-							String act = getStorage().buggedClientAction;
-							List<String> tooltip;
-							if (act.equalsIgnoreCase("tooltip"))
-								tooltip = getStorage().tooltipBuggedClient;
-							else if (act.equalsIgnoreCase("item"))
-								tooltip = ChatManager.getMaxLinesFromItem(p, copy);
-							else if (act.equalsIgnoreCase("show_both")) {
-								tooltip = ChatManager.getMaxLinesFromItem(p, copy);
-								tooltip.addAll(getStorage().tooltipBuggedClient);
-							} else
-								tooltip = new ArrayList<>();
-							message = JSONManipulator.getInstance().parseEmpty(chat, fjson, tooltip, chat.getPlayer());
-							if (message != null) {
-								getter.writeJson(e, message);
-							}
-							lastSentPacket = e.getPacket();
-						}
-						if (copy.hasItemMeta()) {
-							ItemMeta meta = copy.getItemMeta();
-							if (meta instanceof BookMeta) { // filtering written books
-								BookMeta bm = (BookMeta) copy.getItemMeta();
-								bm.setPages(Collections.emptyList());
-								copy.setItemMeta(bm);
-							} else if (meta instanceof BlockStateMeta && Version.getVersion().isNewerOrEquals(Version.V1_9)) { // if it's a block
-								BlockStateMeta bsm = (BlockStateMeta) copy.getItemMeta();
-								if (bsm.hasBlockState() && bsm.getBlockState() instanceof ShulkerBox) {
-									ShulkerBox sb = (ShulkerBox) bsm.getBlockState();
-									for (ItemStack itemInv : sb.getInventory()) {
-										ItemUtils.stripData(itemInv);
-									}
-									bsm.setBlockState(sb);
-								}
-								copy.setItemMeta(bsm);
-							}
-						}
-						lastSentPacket = getter.manageContent(p, chat, e, fjson, getStorage());
-					} else {
-						if (!getStorage().handDisabled) {
-							lastSentPacket = getter.manageEmpty(p, chat, e, fjson, getStorage());
+				IComponentManager currentGetter = getter;
+				String currentJson = fjson;
+				Chat currentChat = chat;
+				Object packetToSend = null;
+				List<Integer> done = new ArrayList<>();
+				while (currentChat != null && !done.contains(currentChat.getId())) {
+					done.add(currentChat.getId());
+					packetToSend = manageChat(p, currentChat, currentGetter, e, currentJson);
+					if (packetToSend == null) // sent by the manager directly, or nothing to send
+						break;
+					// the message can contain placeholders of others chats
+					currentChat = null;
+					for (IComponentManager getters : componentManager) {
+						String tmpJson = getters.getBaseComponentAsJSON(e);
+						if (tmpJson != null && ChatManager.containsSeparator(tmpJson)) {
+							currentGetter = getters;
+							currentJson = ChatManager.fixSeparator(tmpJson);
+							currentChat = getters.getChat(currentJson);
+							ChatItem.debug("(v1) Found other placeholders with " + getters.getClass().getSimpleName() + ": " + currentChat);
+							break;
 						}
 					}
-				} else
-					lastSentPacket = getter.manageContent(p, chat, e, fjson, getStorage());
+				}
+				lastSentPacket = packetToSend;
 				if (lastSentPacket == null) // maybe sent by the manager directly
-					ChatItem.debug("(v1) No packet to sent with manager " + getter.getClass().getName());
+					ChatItem.debug("(v1) No packet to sent with manager " + currentGetter.getClass().getName());
 				else
 					PacketUtils.sendPacket(p, lastSentPacket);
 			} catch (Exception e1) {
 				e1.printStackTrace();
 			}
 		});
+	}
+
+	/**
+	 * Replace the placeholder of the chat in the packet
+	 *
+	 * @param p      the player that will receive the packet
+	 * @param chat   the chat to manage
+	 * @param getter the component manager to use
+	 * @param e      the packet
+	 * @param json   the JSON of the message
+	 * @return the packet to send, or null if nothing to send
+	 * @throws Exception if something gone wrong
+	 */
+	private Object manageChat(Player p, Chat chat, IComponentManager getter, ChatItemPacket e, String json) throws Exception {
+		if(!chat.getAction().hasItem())
+			return getter.manageContent(p, chat, e, json, getStorage());
+		ItemStack item = ChatManager.getUsableItem(chat.getPlayer(), chat.getSlot());
+		if (ItemUtils.isEmpty(item)) {
+			if (!getStorage().handDisabled)
+				return getter.manageEmpty(p, chat, e, json, getStorage());
+			return null;
+		}
+		ItemStack copy = item.clone();
+		if (ItemPlayer.getPlayer(p).isBuggedClient()) { // if the guy that will receive it is bugged
+			String act = getStorage().buggedClientAction;
+			List<String> tooltip;
+			if (act.equalsIgnoreCase("tooltip"))
+				tooltip = getStorage().tooltipBuggedClient;
+			else if (act.equalsIgnoreCase("item"))
+				tooltip = ChatManager.getMaxLinesFromItem(p, copy);
+			else if (act.equalsIgnoreCase("show_both")) {
+				tooltip = ChatManager.getMaxLinesFromItem(p, copy);
+				tooltip.addAll(getStorage().tooltipBuggedClient);
+			} else
+				tooltip = new ArrayList<>();
+			String message = JSONManipulator.getInstance().parseEmpty(chat, json, tooltip, chat.getPlayer());
+			if (message != null) {
+				getter.writeJson(e, message);
+			}
+			lastSentPacket = e.getPacket();
+		}
+		if (copy.hasItemMeta()) {
+			ItemMeta meta = copy.getItemMeta();
+			if (meta instanceof BookMeta) { // filtering written books
+				BookMeta bm = (BookMeta) copy.getItemMeta();
+				bm.setPages(Collections.emptyList());
+				copy.setItemMeta(bm);
+			} else if (meta instanceof BlockStateMeta && Version.getVersion().isNewerOrEquals(Version.V1_9)) { // if it's a block
+				BlockStateMeta bsm = (BlockStateMeta) copy.getItemMeta();
+				if (bsm.hasBlockState() && bsm.getBlockState() instanceof ShulkerBox) {
+					ShulkerBox sb = (ShulkerBox) bsm.getBlockState();
+					for (ItemStack itemInv : sb.getInventory()) {
+						ItemUtils.stripData(itemInv);
+					}
+					bsm.setBlockState(sb);
+				}
+				copy.setItemMeta(bsm);
+			}
+		}
+		return getter.manageContent(p, chat, e, json, getStorage());
 	}
 
 	public Storage getStorage() {

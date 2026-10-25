@@ -1,7 +1,8 @@
 package me.dadus33.chatitem.chatmanager.v3;
 
+import java.util.List;
+
 import org.bukkit.Bukkit;
-import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -15,14 +16,11 @@ import me.dadus33.chatitem.Storage;
 import me.dadus33.chatitem.chatmanager.Chat;
 import me.dadus33.chatitem.chatmanager.ChatAction;
 import me.dadus33.chatitem.chatmanager.ChatManager;
-import me.dadus33.chatitem.utils.Messages;
+import me.dadus33.chatitem.platform.hook.PaperPlatform;
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.TextReplacementConfig;
-import net.kyori.adventure.text.event.ClickEvent;
-import net.kyori.adventure.text.event.HoverEvent;
-import net.kyori.adventure.text.event.HoverEventSource;
 
 public class PaperListener implements Listener {
 
@@ -46,44 +44,38 @@ public class PaperListener implements Listener {
 		Player p = e.getPlayer();
 		Component message = e.message();
 		String rawMessage = C.string(message);
-		if (ChatManager.containsSeparator(rawMessage)) { // fix for v1
+		// fix for v1: put back all placeholders
+		for (int i = 0; i < 50 && ChatManager.containsSeparator(rawMessage); i++) {
 			Chat chat = Chat.getFrom(rawMessage);
-			if (chat != null) {
-				message = message.replaceText(TextReplacementConfig.builder().matchLiteral(ChatManager.addSeparator(chat.getId()))
-						.replacement(C.text(chat.getSlot().getPlaceholders().get(0))).build());
-				rawMessage = C.string(message);
-			}
+			if (chat == null)
+				break;
+			message = message.replaceText(TextReplacementConfig.builder().matchLiteral(ChatManager.addSeparator(chat.getId()))
+					.replacement(C.text(chat.getSlot().getPlaceholders().get(0))).build());
+			String next = C.string(message);
+			if (next.equals(rawMessage))
+				break;
+			rawMessage = next;
 		}
-		ItemSlot slot = ItemSlot.getItemSlotFromMessage(rawMessage);
-		ChatItem.debug("(v3) Raw message: " + rawMessage + ", slot: " + slot);
-		if (slot == null) // if not found
+		List<ItemSlot> slots = ItemSlot.getItemSlotsFromMessage(rawMessage);
+		ChatItem.debug("(v3) Raw message: " + rawMessage + ", slots: " + slots);
+		if (slots.isEmpty()) // if not found
 			return;
-		ChatAction action = ChatManager.getChatAction(slot, p);
-		if (!ChatManager.canUsePlaceholder(p, action, slot, e))
-			return;
-		HoverEventSource<?> hoverEvent = null;
-		if(action.hasItem()) {
-			if(!action.getItem().getType().equals(Material.AIR))
-				hoverEvent = action.getItem().asHoverEvent();
-			else {
-				Component t = null;
-				for(String line : Messages.getMessageList("general.hand.tooltip", "%cible%", p.getName())) {
-					if(t == null) {
-						t = Component.text("");
-					} else
-						t.append(Component.newline());
-					t.append(C.text(line));
-				}
-				hoverEvent = HoverEvent.showText(t);
+		boolean used = false;
+		for (ItemSlot slot : slots) {
+			ChatAction action = ChatManager.getChatAction(slot, p);
+			if (!ChatManager.canUsePlaceholder(p, action, slot, e)) {
+				if (e.isCancelled())
+					return;
+				continue;
 			}
-		} else
-			hoverEvent = HoverEvent.showText(C.text(Messages.getMessage(action.getSlot().name().toLowerCase() + ".hover", "%cible%", p.getName())));
-		TextComponent like = C.text(ChatManager.getNameForChatAction(p, action, getStorage())).hoverEvent(hoverEvent);
-		if (action.hasCommand())
-			like.clickEvent(ClickEvent.runCommand(action.getCommand()));
-		for (String s : slot.getPlaceholders()) {
-			message = message.replaceText(TextReplacementConfig.builder().matchLiteral(s).replacement(like).build());
+			TextComponent like = PaperPlatform.createActionComponent(p, action);
+			for (String s : slot.getPlaceholders()) {
+				message = message.replaceText(TextReplacementConfig.builder().matchLiteral(s).replacement(like).build());
+			}
+			used = true;
 		}
+		if (!used)
+			return;
 		if (ChatItem.getInstance().getConfig().getBoolean("manager-config.paper.send-ourself", true)) {
 			for (Audience a : e.viewers().isEmpty() ? Bukkit.getOnlinePlayers() : e.viewers())
 				a.sendMessage(e.renderer().render(p, p.displayName(), message, a));

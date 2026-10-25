@@ -5,6 +5,7 @@ import static me.dadus33.chatitem.utils.PacketUtils.getNmsClass;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -19,9 +20,9 @@ import me.dadus33.chatitem.ChatItem;
 import me.dadus33.chatitem.chatmanager.Chat;
 import me.dadus33.chatitem.chatmanager.ChatAction;
 import me.dadus33.chatitem.chatmanager.ChatManager;
-import me.dadus33.chatitem.utils.Messages;
 import me.dadus33.chatitem.utils.PacketUtils;
 import me.dadus33.chatitem.utils.ReflectionUtils;
+import me.dadus33.chatitem.utils.Version;
 
 public class JSONManipulator {
 
@@ -36,10 +37,51 @@ public class JSONManipulator {
 	public static final Method AS_NMS_COPY = ReflectionUtils.getMethod(CRAFT_ITEM_STACK_CLASS, "asNMSCopy", ItemStack.class);
 	public static final Class<?> NBT_TAG_COMPOUND = getNmsClass("NBTTagCompound", "nbt.", "CompoundTag");
 	public static final Method SAVE_NMS_ITEM_STACK_METHOD = ReflectionUtils.getMethod(NMS_ITEM_STACK_CLASS, NBT_TAG_COMPOUND, NBT_TAG_COMPOUND);
-	public static final Field MAP = ReflectionUtils.getField(NBT_TAG_COMPOUND, "map", "x");
+	public static final Field MAP = ReflectionUtils.getField(NBT_TAG_COMPOUND, "map", "x", "tags");
 
 	private JsonArray classicTooltip;
-	
+
+	/**
+	 * Since MC 1.21.5, text components use snake_case keys (hover_event,
+	 * click_event...) and the command of a click event is in "command"
+	 */
+	private static boolean isSnakeCase() {
+		return Version.getVersion().isNewerOrEquals(Version.V1_21_5);
+	}
+
+	private static String getHoverEventKey() {
+		return isSnakeCase() ? "hover_event" : "hoverEvent";
+	}
+
+	private static String getClickEventKey() {
+		return isSnakeCase() ? "click_event" : "clickEvent";
+	}
+
+	/**
+	 * Create the click event of the action: run the command, or copy the text
+	 * (only suggested in chat before MC 1.15)
+	 *
+	 * @param action the action of the message
+	 * @return the click event or null if nothing should happen on click
+	 */
+	private static JsonObject createClick(ChatAction action) {
+		JsonObject click = new JsonObject();
+		if (action.hasCommand()) {
+			click.addProperty("action", "run_command");
+			click.addProperty(isSnakeCase() ? "command" : "value", action.getCommand());
+		} else if (action.hasCopyText()) {
+			if (Version.getVersion().isNewerOrEquals(Version.V1_15)) {
+				click.addProperty("action", "copy_to_clipboard");
+				click.addProperty("value", action.getCopyText());
+			} else {
+				click.addProperty("action", "suggest_command");
+				click.addProperty("value", action.getCopyText());
+			}
+		} else
+			return null;
+		return click;
+	}
+
 	public static JsonObject parseOrGet(String json) {
 		if(json.startsWith("\"") && json.endsWith("\"")) {// seems to be simple line
 			if(json.startsWith("\"{") && json.endsWith("}\"")) // json in string
@@ -65,7 +107,10 @@ public class JSONManipulator {
 		// There's no public clone method for JSONObjects so we need to parse them every
 		// time
 		JsonObject hover = new JsonObject();
-		if (action.hasItem()) {
+		JsonObject itemHover = action.hasItem() && Version.getVersion().isNewerOrEquals(Version.V1_20_6) ? PacketUtils.getItemHoverJson(action.getItem()) : null;
+		if (itemHover != null) { // since 1.20.5, data components can only be written by the server
+			hover = itemHover;
+		} else if (action.hasItem()) {
 			hover.addProperty("action", "show_item");
 
 			// Get the JSON representation of the item (well, not really JSON, but rather a
@@ -79,13 +124,12 @@ public class JSONManipulator {
 			// Get the JSON representation of the item (well, not really JSON, but rather a
 			// string representation of NBT data)
 			JsonArray hoverArray = new JsonArray();
-			hoverArray.add(Messages.getMessage(action.getSlot().name().toLowerCase() + ".hover", "%cible%", chat.getItemPlayer().getPlayer().getName()));
+			hoverArray.add(action.getHoverText());
 			hover.add("value", hoverArray);
 
-			JsonObject click = new JsonObject();
-			click.addProperty("action", "run_command");
-			click.addProperty("value", action.getCommand());
-			wrapper.add("clickEvent", click);
+			JsonObject click = createClick(action);
+			if (click != null)
+				wrapper.add(getClickEventKey(), click);
 		}
 
 		if (use.size() == 1) {
@@ -101,26 +145,45 @@ public class JSONManipulator {
 		if (!wrapper.has("text"))
 			wrapper.addProperty("text", ""); // The text field is compulsory, even if it's empty
 		ChatItem.debug("Wrapper " + wrapper + " > " + use);
-		wrapper.add("hoverEvent", hover);
+		wrapper.add(getHoverEventKey(), hover);
 
-		if (obj.size() == 1 && obj.has("text")) {
-			wrapper.add("text", obj.get("text"));
-			ChatItem.debug("[JsonManipulator] Parsed quick: " + obj.toString() + ", wrapper: " + wrapper);
-			return ChatManager.replaceSeparator(chat, wrapper.toString(), replacement);
-		}
+		String separator = ChatManager.addSeparator(chat.getId());
+		moveTextToExtra(obj, separator);
 		if(!obj.has("extra"))
 			obj.add("extra", new JsonArray());
-		ChatItem.debug("Parsing array " + obj.getAsJsonArray("extra") + " FROM: " + obj + ". Result: " + parseArray(obj.getAsJsonArray("extra"), wrapper));
-		obj.add("extra", parseArray(obj.getAsJsonArray("extra"), wrapper));
+		JsonArray result = parseArray(obj.getAsJsonArray("extra"), wrapper, separator);
+		ChatItem.debug("Parsing array " + obj.getAsJsonArray("extra") + " FROM: " + obj + ". Result: " + result);
+		obj.add("extra", result);
 		if (!obj.has("text")) {
 			obj.addProperty("text", "");
 		}
 		return obj.toString();
 	}
 
+	/**
+	 * Move the text of the root object which contains the separator into the
+	 * extra, so the separator can be replaced like others
+	 *
+	 * @param obj       the root object
+	 * @param separator the separator of the chat
+	 */
+	private static void moveTextToExtra(JsonObject obj, String separator) {
+		JsonElement text = obj.get("text");
+		if (text == null || !text.isJsonPrimitive() || !ChatManager.fixSeparator(text.getAsString()).contains(separator))
+			return;
+		JsonArray extra = new JsonArray();
+		extra.add(text);
+		if (obj.has("extra") && obj.get("extra").isJsonArray())
+			extra.addAll(obj.getAsJsonArray("extra"));
+		obj.add("extra", extra);
+		obj.addProperty("text", "");
+	}
+
 	@SuppressWarnings("deprecation")
 	public String parseEmpty(Chat chat, String json, List<String> tooltip, Player sender) {
 		JsonObject obj = parseOrGet(json);
+		String separator = ChatManager.addSeparator(chat.getId());
+		moveTextToExtra(obj, separator);
 		JsonArray array = obj.has("extra") ? obj.getAsJsonArray("extra") : new JsonArray();
 		JsonArray use = Translator.toJson(ChatManager.getNameForChatAction(chat.getPlayer(), chat, ChatItem.getInstance().getStorage()).replace("{name}", sender.getName()).replace("{display-name}", sender.getDisplayName()));
 		JsonObject hover = JsonParser.parseString("{\"action\":\"show_text\", \"value\": \"\"}").getAsJsonObject();
@@ -138,17 +201,26 @@ public class JSONManipulator {
 		hover.add("value", new JsonPrimitive(oneLineTooltip.toString()));
 		if (!tooltip.isEmpty()) {
 			for (JsonElement ob : use)
-				ob.getAsJsonObject().add("hoverEvent", hover);
+				ob.getAsJsonObject().add(getHoverEventKey(), hover);
 			classicTooltip = use;
 		}
-		obj.add("extra", parseArray(array, classicTooltip));
+		obj.add("extra", parseArray(array, classicTooltip, separator));
 		if (!obj.has("text")) {
 			obj.addProperty("text", "");
 		}
 		return obj.toString();
 	}
 
-	private JsonArray parseArray(JsonArray arr, JsonElement tooltip) {
+	/**
+	 * Replace the separator by the tooltip in all elements of the array. Separator
+	 * of other chats are kept, as a message can have many placeholders
+	 *
+	 * @param arr       the array to parse
+	 * @param tooltip   the element which replace the separator
+	 * @param separator the separator of the actual chat, with it's ID
+	 * @return the new array
+	 */
+	private JsonArray parseArray(JsonArray arr, JsonElement tooltip, String separator) {
 		JsonArray replacer = new JsonArray();
 		for (int i = 0; i < arr.size(); ++i) {
 			JsonElement element = arr.get(i);
@@ -164,11 +236,11 @@ public class JSONManipulator {
 				JsonElement text = o.get("text");
 				ChatItem.debug("adding JsonObject " + o + " (text: " + text + ")");
 				if(text != null && !text.getAsString().isEmpty()) {
-					addParsedStringToArray(text.getAsString(), replacer, o, tooltip);
+					addParsedStringToArray(text.getAsString(), replacer, o, tooltip, separator);
 				}
 				if (o.has("extra") && !o.get("extra").getAsJsonArray().isEmpty()) {
 					JsonArray jar = o.get("extra").getAsJsonArray();
-					JsonArray tmpArray = parseArray(jar, tooltip);
+					JsonArray tmpArray = parseArray(jar, tooltip, separator);
 					if (!tmpArray.isEmpty()) {
 						o.add("extra", tmpArray);
 						replacer.add(o);
@@ -179,11 +251,11 @@ public class JSONManipulator {
 			} else if (element.isJsonArray()) {
 				JsonArray jar = element.getAsJsonArray();
 				if (!jar.isEmpty()) {
-					replacer.set(i, parseArray(element.getAsJsonArray(), tooltip));
+					replacer.set(i, parseArray(element.getAsJsonArray(), tooltip, separator));
 				}
 			} else if(element.isJsonPrimitive()) {
 				if(ChatManager.containsSeparator(element.getAsString())) {
-					addParsedStringToArray(element.getAsString(), replacer, element, tooltip);
+					addParsedStringToArray(element.getAsString(), replacer, element, tooltip, separator);
 				} else
 					replacer.add(element); // add basic element
 			}
@@ -191,36 +263,20 @@ public class JSONManipulator {
 		return replacer;
 	}
 
-	private void addParsedStringToArray(String msg, JsonArray rep, JsonElement o, JsonElement tooltip) {
-		if (!ChatManager.containsSeparator(msg)) {
+	private void addParsedStringToArray(String msg, JsonArray rep, JsonElement o, JsonElement tooltip, String separator) {
+		msg = ChatManager.fixSeparator(msg);
+		if (!msg.contains(separator)) { // nothing to replace, or only separator of others chats
 			rep.add(o.deepCopy());
 			return;
 		}
 		ChatItem.debug("[JSONManipulator] Parsed string " + msg + ", rep: " + rep);
-		String current = "";
-		boolean wasSep = false;
-		for (String parts : msg.split("")) {
-			if (ChatManager.equalsSeparator(parts)) {
-				if (!current.isEmpty()) {
-					if(o.isJsonObject()) {
-						JsonObject jsonObj = o.getAsJsonObject().deepCopy();
-						jsonObj.addProperty("text", current); // edit text
-						rep.add(jsonObj); // add with all basic coloring things
-					} else {
-						rep.add(current);
-					}
-					current = "";
-				}
+		String[] parts = msg.split(Pattern.quote(separator), -1);
+		for (int i = 0; i < parts.length; i++) {
+			if (i > 0)
 				rep.add(tooltip);
-				wasSep = true;
-			} else if (wasSep) {
-				if (ChatManager.equalsSeparatorEnd(parts)) // sep finished
-					wasSep = false;
-			} else {
-				current += parts;
-			}
-		}
-		if (!current.isEmpty()) {
+			String current = parts[i];
+			if (current.isEmpty())
+				continue;
 			if(o.isJsonObject()) {
 				JsonObject jsonObj = o.getAsJsonObject().deepCopy();
 				jsonObj.addProperty("text", current); // edit text

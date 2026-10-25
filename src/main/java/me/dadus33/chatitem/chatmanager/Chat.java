@@ -3,6 +3,8 @@ package me.dadus33.chatitem.chatmanager;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.bukkit.entity.Player;
 
@@ -15,6 +17,7 @@ public class Chat {
 	
 	private static int actualId = 0;
 	private static final List<Chat> CHAT = new ArrayList<>();
+	private static final Pattern SEPARATOR_PATTERN = Pattern.compile(ChatManager.SEPARATOR + "(\\d+)" + ChatManager.SEPARATOR_END);
 	public static Optional<Chat> getChat(int id) {
 		synchronized (CHAT) {
 			CHAT.removeIf(Chat::isOld);
@@ -37,6 +40,24 @@ public class Chat {
 		}
 		ChatItem.debug("Search in " + message + ", id found: " + id);
 		return (id != "" && Utils.isInteger(id)) ? Chat.getChat(Integer.parseInt(id)).orElse(null) : null;
+	}
+
+	/**
+	 * Get all chats which have their separator in the message (a message can
+	 * contain many placeholders)
+	 *
+	 * @param message the message
+	 * @return all chats found, in the order of the message
+	 */
+	public static List<Chat> getAllFrom(String message) {
+		List<Chat> list = new ArrayList<>();
+		Matcher matcher = SEPARATOR_PATTERN.matcher(ChatManager.fixSeparator(message));
+		while (matcher.find()) {
+			Chat chat = Chat.getChat(Integer.parseInt(matcher.group(1))).orElse(null);
+			if (chat != null && !list.contains(chat))
+				list.add(chat);
+		}
+		return list;
 	}
 
 	private final long time;

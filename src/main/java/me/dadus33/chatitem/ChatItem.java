@@ -37,6 +37,7 @@ import me.dadus33.chatitem.hook.placeholders.PlaceholderAPIHook;
 import me.dadus33.chatitem.hook.placeholders.VaultPlaceholderHook;
 import me.dadus33.chatitem.invsee.InvShower;
 import me.dadus33.chatitem.itemnamer.NamerManager;
+import me.dadus33.chatitem.listeners.ChatFormatListener;
 import me.dadus33.chatitem.listeners.InventoryListener;
 import me.dadus33.chatitem.listeners.JoinListener;
 import me.dadus33.chatitem.listeners.TranslationInventoryListener;
@@ -64,7 +65,7 @@ public class ChatItem extends JavaPlugin {
 	public static IPlatform getPlatform() {
 		return platform;
 	}
-	public final static int CFG_VER = 13;
+	public final static int CFG_VER = 14;
 	public static boolean discordSrvSupport = false, hasNewVersion = false;
 	private static ChatItem instance;
 	private final String brandChannelName = Version.getVersion().isNewerOrEquals(Version.V1_13) ? "minecraft:brand" : "MC|Brand";
@@ -171,6 +172,7 @@ public class ChatItem extends JavaPlugin {
 		pm.registerEvents(new InventoryListener(), this);
 		pm.registerEvents(new TranslationInventoryListener(), this);
 		pm.registerEvents(new ChatEventListener(), this);
+		pm.registerEvents(new ChatFormatListener(), this);
 
 		chooseManagers();
 

@@ -2,6 +2,7 @@ package me.dadus33.chatitem.platform.hook;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -28,13 +29,13 @@ import me.dadus33.chatitem.playernamer.PlayerNamerManager;
 import me.dadus33.chatitem.utils.ColorManager;
 import me.dadus33.chatitem.utils.Colors;
 import me.dadus33.chatitem.utils.ItemUtils;
-import me.dadus33.chatitem.utils.Messages;
 import me.dadus33.chatitem.utils.PacketUtils;
 import me.dadus33.chatitem.utils.ReflectionUtils;
 import me.dadus33.chatitem.utils.Utils;
 import me.dadus33.chatitem.utils.Version;
 import net.md_5.bungee.api.ChatColor;
 import net.md_5.bungee.api.chat.BaseComponent;
+import net.md_5.bungee.api.chat.ClickEvent;
 import net.md_5.bungee.api.chat.ComponentBuilder;
 import net.md_5.bungee.api.chat.TextComponent;
 
@@ -98,12 +99,13 @@ public class SpigotPlatform implements IPlatform {
 
 	@Override
 	public Version getMinecraftVersion() {
-		return Version.getVersionByName(getNMSVersion().replace("_R4", "_6"));
+		return Version.getVersionByMinecraftVersion(Bukkit.getBukkitVersion());
 	}
 
 	@Override
 	public String getNMSVersion() {
-		return Bukkit.getServer().getClass().getPackage().getName().replace(".", ",").split(",")[3];
+		String[] parts = Bukkit.getServer().getClass().getPackage().getName().replace(".", ",").split(",");
+		return parts.length <= 3 ? "" : parts[3];
 	}
 
 	@Override
@@ -150,13 +152,34 @@ public class SpigotPlatform implements IPlatform {
 	}
 
 	private Object getRegistry() throws Exception {
-		Class<?> serverClass = Class.forName("net.minecraft.server.MinecraftServer");
-		return serverClass.getDeclaredMethod("ba").invoke(serverClass.getDeclaredMethod("getServer").invoke(null));
+		return PacketUtils.getRegistryAccess();
+	}
+
+	/**
+	 * Get the CraftBukkit method to convert between JSON and NMS component.<br>
+	 * It's preferred to the NMS serializer as it doesn't change between versions,
+	 * and the NMS one has been removed in MC 1.21.5.
+	 *
+	 * @param name  the name of the method (toJSON or fromJSON)
+	 * @param param the param of the method
+	 * @return the method or null if not found
+	 */
+	private static Method getCraftChatMessageMethod(String name, Class<?> param) {
+		if (param == null || !ReflectionUtils.isClassExist(PacketUtils.OBC_PREFIX + "util.CraftChatMessage"))
+			return null;
+		try {
+			return PacketUtils.getObcClass("util.CraftChatMessage").getMethod(name, param);
+		} catch (NoSuchMethodException e) {
+			return null; // old version
+		}
 	}
 
 	public static Method getBaseComponentToJsonMethod() {
+		Method craftMethod = getCraftChatMessageMethod("toJSON", PacketUtils.COMPONENT_CLASS);
+		if (craftMethod != null)
+			return craftMethod;
 		Class<?> chatSerializerClass = PacketUtils.getNmsClass("IChatBaseComponent$ChatSerializer", "network.chat.", "ChatSerializer", "Component$Serializer");
-		Class<?> chatBaseComponentClass = PacketUtils.getNmsClass("IChatBaseComponent", "network.chat.", "Component");
+		Class<?> chatBaseComponentClass = PacketUtils.COMPONENT_CLASS;
 		if (chatSerializerClass == null || chatBaseComponentClass == null)
 			return null;
 		try {
@@ -172,9 +195,12 @@ public class SpigotPlatform implements IPlatform {
 	}
 
 	public static Method getJsonToBaseComponentMethod() {
+		Method craftMethod = getCraftChatMessageMethod("fromJSON", String.class);
+		if (craftMethod != null)
+			return craftMethod;
 		Class<?> chatSerializerClass = PacketUtils.getNmsClass("IChatBaseComponent$ChatSerializer", "network.chat.", "ChatSerializer", "Component$Serializer");
-		Class<?> chatBaseComponentClass = PacketUtils.getNmsClass("IChatBaseComponent", "network.chat.", "Component");
-		Class<?> chatMutableComponentClass = PacketUtils.getNmsClass("IChatMutableComponent", "network.chat.");
+		Class<?> chatBaseComponentClass = PacketUtils.COMPONENT_CLASS;
+		Class<?> chatMutableComponentClass = PacketUtils.getNmsClass("IChatMutableComponent", "network.chat.", "MutableComponent");
 		if (chatSerializerClass == null || chatBaseComponentClass == null)
 			return null;
 		try {
@@ -194,18 +220,21 @@ public class SpigotPlatform implements IPlatform {
 	}
 
 	@Override
-	public void sendMessage(Player to, Player origin, ChatAction action, String msg) {
+	public void sendMessage(Player to, Player origin, List<ChatAction> actions, String msg) {
 		ComponentBuilder builder = new ComponentBuilder("");
 		ChatColor color = ChatColor.WHITE;
 		String colorCode = "", text = "";
 		boolean waiting = false, removing = false;
-		for (char args : msg.toCharArray()) {
+		// basic text shows the action only if there is one, else it's not clear which one is it
+		ChatAction textAction = actions.size() == 1 ? actions.get(0) : null;
+		for (int i = 0; i < msg.length(); i++) {
+			char args = msg.charAt(i);
 			if (args == '§') { // begin of color
 				if (colorCode.isEmpty() && !text.isEmpty()) { // text before this char
 					if (text.length() > 2 && text.startsWith("§") && text.substring(2) == ChatColor.stripColor(text) && color != null && color != ChatColor.WHITE) {
 						text = text.substring(2); // remove some code which should not be here
 					}
-					appendToComponentBuilder(builder, createComponent(to, text, color, action));
+					appendToComponentBuilder(builder, createComponent(to, text, color, textAction), textAction != null);
 					text = "";
 				}
 				waiting = true; // waiting for color code
@@ -239,15 +268,21 @@ public class SpigotPlatform implements IPlatform {
 					colorCode = "";
 				}
 				if (args == ChatManager.SEPARATOR) {
-					// here put the item
-					appendToComponentBuilder(builder, fixColorComponent(to, text, color, action));
+					// here put the item. The index of the action is between the separator and the end
+					ChatAction action = actions.get(0);
+					int end = msg.indexOf(ChatManager.SEPARATOR_END, i);
+					if (end != -1) {
+						String index = msg.substring(i + 1, end);
+						if (Utils.isInteger(index) && Integer.parseInt(index) < actions.size())
+							action = actions.get(Integer.parseInt(index));
+						removing = true;
+					}
+					appendToComponentBuilder(builder, fixColorComponent(to, text, color, textAction), textAction != null);
 					if (action.hasItem())
 						addItem(builder, to, origin, action.getItem(), action);
 					else
 						addCommand(builder, to, origin, action.getCommand(), action);
 					text = "";
-					if (ChatManager.containsSeparatorEnd(msg))
-						removing = true;
 				} else if (args == ChatManager.SEPARATOR_END) {
 					removing = false;
 				} else if (!removing) { // not removing content
@@ -257,8 +292,18 @@ public class SpigotPlatform implements IPlatform {
 			}
 		}
 		if (!text.isEmpty())
-			appendToComponentBuilder(builder, createComponent(to, text, color, action));
-		to.spigot().sendMessage(builder.create());
+			appendToComponentBuilder(builder, createComponent(to, text, color, textAction), textAction != null);
+		BaseComponent[] comps = builder.create();
+		List<ItemStack> items = new ArrayList<>();
+		for (ChatAction action : actions)
+			if (action.hasItem() && !ItemUtils.isEmpty(action.getItem()))
+				items.add(action.getItem());
+		if (!items.isEmpty() && Version.getVersion().isNewerOrEquals(Version.V1_20_6)) {
+			String json = PacketUtils.bungeeToJsonWithItems(comps, items);
+			if (json != null && PacketUtils.sendSystemChat(to, json))
+				return;
+		}
+		to.spigot().sendMessage(comps);
 	}
 
 	public static void addItem(ComponentBuilder builder, Player to, Player origin, ItemStack item, ChatAction action) {
@@ -296,14 +341,34 @@ public class SpigotPlatform implements IPlatform {
 
 	public static void addCommand(ComponentBuilder builder, Player to, Player origin, String command, ChatAction action) {
 		ComponentBuilder itemComponent = new ComponentBuilder("");
-		appendToComponentBuilder(itemComponent, fixColorComponent(to, Messages.getMessage(action.getSlot().name().toLowerCase() + ".chat", "%cible%", origin.getName()), ChatColor.WHITE, action));
+		appendToComponentBuilder(itemComponent, fixColorComponent(to, action.getChatText(), ChatColor.WHITE, action));
 		appendToComponentBuilder(builder, itemComponent.create());
 	}
 
 	public static void appendToComponentBuilder(ComponentBuilder builder, BaseComponent[] comps) {
+		appendToComponentBuilder(builder, comps, true);
+	}
+
+	/**
+	 * Append components to the builder
+	 *
+	 * @param builder    the builder
+	 * @param comps      components to append
+	 * @param keepEvents if components without hover/click event should take the
+	 *                   ones of the previous component
+	 */
+	public static void appendToComponentBuilder(ComponentBuilder builder, BaseComponent[] comps, boolean keepEvents) {
 		if (shouldUseAppendMethod) {
 			try {
-				builder.append(comps);
+				if (keepEvents)
+					builder.append(comps);
+				else {
+					try {
+						builder.append(comps, ComponentBuilder.FormatRetention.FORMATTING);
+					} catch (NoSuchMethodError | NoClassDefFoundError e) { // old version
+						builder.append(comps);
+					}
+				}
 			} catch (Exception e) {
 				ChatItem.getInstance().getLogger().severe("This should NEVER append. The ComponentBuilder#append(BaseComponent[]) was found but it's NOT. Using own next time.");
 				shouldUseAppendMethod = false;
@@ -372,18 +437,21 @@ public class SpigotPlatform implements IPlatform {
 	}
 
 	private static BaseComponent[] createComponent(Player to, String text, ChatColor color, ChatAction action) {
-		ComponentBuilder littleBuilder = new ComponentBuilder(ChatItem.replace(action.getOrigin(), text));
+		ComponentBuilder littleBuilder = new ComponentBuilder(action == null ? text : ChatItem.replace(action.getOrigin(), text));
 		if (color != null && !Colors.isFormatting(color)) // don't add reset thing
 			littleBuilder.color(color);
-		if (action.hasItem()) {
+		if (action == null) {
+			// basic text without event
+		} else if (action.hasItem()) {
 			if (action.getItem().getType().equals(Material.AIR))
 				littleBuilder.event(Utils.createTextHover(String.join("\n", ChatItem.getInstance().getStorage().tooltipHand)));
 			else
 				littleBuilder.event(Utils.createItemHover(action.getItem(), to));
 		} else {
-			littleBuilder.event(Utils.createTextHover(Messages.getMessage(action.getSlot().name().toLowerCase() + ".hover")));
-			if (action.hasCommand())
-				littleBuilder.event(Utils.createRunCommand(action.getCommand()));
+			littleBuilder.event(Utils.createTextHover(action.getHoverText()));
+			ClickEvent click = Utils.createClick(action);
+			if (click != null)
+				littleBuilder.event(click);
 		}
 		return littleBuilder.create();
 	}

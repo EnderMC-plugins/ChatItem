@@ -1,6 +1,7 @@
 package me.dadus33.chatitem.platform;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import org.bukkit.Material;
@@ -46,7 +47,21 @@ public interface IPlatform {
 	
 	Object jsonToBaseComponent(String json);
 	
-	void sendMessage(Player to, Player origin, ChatAction action, String msg);
+	default void sendMessage(Player to, Player origin, ChatAction action, String msg) {
+		sendMessage(to, origin, Collections.singletonList(action), msg);
+	}
+
+	/**
+	 * Send the message with all actions
+	 *
+	 * @param to the player that will receive the message
+	 * @param origin the player that used placeholders
+	 * @param actions all actions of the message
+	 * @param msg the message, where the action of index "i" should be showed at
+	 *            {@link me.dadus33.chatitem.chatmanager.ChatManager#addSeparator(int)}.
+	 *            A separator without index shows the first action.
+	 */
+	void sendMessage(Player to, Player origin, List<ChatAction> actions, String msg);
 	
 	String stringifyItem(ItemStack item);
 }

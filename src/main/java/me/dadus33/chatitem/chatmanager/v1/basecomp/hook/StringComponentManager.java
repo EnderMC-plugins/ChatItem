@@ -1,6 +1,7 @@
 package me.dadus33.chatitem.chatmanager.v1.basecomp.hook;
 
 import java.util.Arrays;
+import java.util.Collections;
 
 import org.bukkit.entity.Player;
 
@@ -18,8 +19,9 @@ import me.dadus33.chatitem.chatmanager.v1.PacketEditingChatManager;
 import me.dadus33.chatitem.chatmanager.v1.basecomp.IComponentManager;
 import me.dadus33.chatitem.chatmanager.v1.packets.ChatItemPacket;
 import me.dadus33.chatitem.hook.DiscordSrvSupport;
-import me.dadus33.chatitem.utils.Messages;
+import me.dadus33.chatitem.utils.PacketUtils;
 import me.dadus33.chatitem.utils.Utils;
+import me.dadus33.chatitem.utils.Version;
 import net.md_5.bungee.api.chat.BaseComponent;
 import net.md_5.bungee.api.chat.ClickEvent;
 import net.md_5.bungee.api.chat.ComponentBuilder;
@@ -68,8 +70,7 @@ public class StringComponentManager implements IComponentManager {
 		if (action.hasItem())
 			return manage(viewer, chat, packet, ChatManager.getNameForChatAction(viewer, chat, c), Utils.createItemHover(action.getItem(), viewer), null);
 		else
-			return manage(viewer, chat, packet, ChatManager.getNameForChatAction(viewer, chat, c),
-					Utils.createTextHover(Messages.getMessage(action.getSlot().name().toLowerCase() + ".hover", "%cible%", chat.getPlayer().getName())), Utils.createRunCommand(action.getCommand()));
+			return manage(viewer, chat, packet, ChatManager.getNameForChatAction(viewer, chat, c), Utils.createTextHover(action.getHoverText()), Utils.createClick(action));
 	}
 
 	@Override
@@ -85,9 +86,9 @@ public class StringComponentManager implements IComponentManager {
 			rep = ChatManager.getHandName(chat);
 			click = null;
 		} else {
-			hover = Utils.createTextHover(Messages.getMessage(action.getSlot().name().toLowerCase() + ".hover", "%cible%", chat.getPlayer().getName()));
-			rep = Messages.getMessage(action.getSlot().name().toLowerCase() + ".chat", "%cible%", chat.getPlayer().getName());
-			click = Utils.createRunCommand(action.getCommand());
+			hover = Utils.createTextHover(action.getHoverText());
+			rep = action.getChatText();
+			click = Utils.createClick(action);
 		}
 		return manage(viewer, chat, packet, rep, hover, click);
 	}
@@ -125,7 +126,10 @@ public class StringComponentManager implements IComponentManager {
 		if (ChatItem.discordSrvSupport && DiscordSrvSupport.isSendingMessage() && viewer == chat.getPlayer())
 			DiscordSrvSupport.sendChatMessage(viewer, TextComponent.toLegacyText(components), null);
 		try {
-			packet.setPacket(PacketEditingChatManager.createSystemChatPacket(ComponentSerializer.toString(components), packet.getPacket()));
+			String json = null;
+			if (chat.getAction().hasItem() && Version.getVersion().isNewerOrEquals(Version.V1_20_6))
+				json = PacketUtils.bungeeToJsonWithItems(components, Collections.singletonList(chat.getAction().getItem()));
+			packet.setPacket(PacketEditingChatManager.createSystemChatPacket(json == null ? PacketUtils.bungeeToJson(components) : json, packet.getPacket()));
 		} catch (Exception e) {
 			e.printStackTrace();
 		}

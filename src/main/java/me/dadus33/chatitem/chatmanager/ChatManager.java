@@ -142,6 +142,8 @@ public abstract class ChatManager {
 	}
 
 	public static ChatAction getChatAction(ItemSlot slot, Player p) {
+		if (slot.isInfo())
+			return new ChatAction(slot, p, (String) null);
 		if (slot.isCommand()) {
 			UUID uuid = UUID.randomUUID();
 			InvShower.add(uuid.toString(), slot == ItemSlot.INVENTORY ? new PlayerInventoryShower(p) : new EnderChestShower(p));
@@ -233,7 +235,7 @@ public abstract class ChatManager {
 			}
 			return ChatItem.replace(chat.getPlayer(), styleItem(viewer, item, c));
 		}
-		return ChatItem.replace(chat.getPlayer(), Messages.getMessage(action.getSlot().name().toLowerCase() + ".chat", "%cible%", action.getOrigin().getName()));
+		return ChatItem.replace(chat.getPlayer(), action.getChatText());
 	}
 
 	public static String getNameForChatAction(Player viewer, ChatAction action, Storage c) {
@@ -247,7 +249,7 @@ public abstract class ChatManager {
 			}
 			return ChatItem.replace(action.getOrigin(), styleItem(viewer, item, c));
 		}
-		return ChatItem.replace(action.getOrigin(), Messages.getMessage(action.getSlot().name().toLowerCase() + ".chat", "%cible%", action.getOrigin().getName()));
+		return ChatItem.replace(action.getOrigin(), action.getChatText());
 	}
 
 	@Deprecated

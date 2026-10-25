@@ -16,7 +16,9 @@ public class Messages {
 	}
 	
 	public static String getMessage(String key, Object... placeholders) {
-		return colorAndPlaceholders(ChatItem.getInstance().getConfig().getString("messages." + key, key), placeholders);
+		// without default value to use the one of the default config if missing (for old config)
+		String msg = ChatItem.getInstance().getConfig().getString("messages." + key);
+		return colorAndPlaceholders(msg == null ? key : msg, placeholders);
 	}
 	
 	public static List<String> getMessageList(String key, Object... placeholders) {

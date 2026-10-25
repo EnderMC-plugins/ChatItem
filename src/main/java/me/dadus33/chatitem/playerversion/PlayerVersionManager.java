@@ -12,15 +12,20 @@ public class PlayerVersionManager {
 
     static {
         ChatItem pl = ChatItem.getInstance();
+        IPlayerVersion adapter = null;
         if (Bukkit.getPluginManager().getPlugin("ProtocolSupport") != null) {
-            playerVersionAdapter = new ProtocolSupportHook();
-            pl.getLogger().info("Loading ProtocolSupport support ...");
-        } else if (Bukkit.getPluginManager().getPlugin("ViaVersion") != null) {
-            playerVersionAdapter = new ViaVersionHook();
-            pl.getLogger().info("Loading ViaVersion support ...");
-        } else {
-            playerVersionAdapter = new DefaultVersionHook();
+            try {
+                adapter = new ProtocolSupportHook();
+                pl.getLogger().info("Loading ProtocolSupport support ...");
+            } catch (ReflectiveOperationException e) {
+                pl.getLogger().warning("Failed to load ProtocolSupport support: " + e.getMessage());
+            }
         }
+        if (adapter == null && Bukkit.getPluginManager().getPlugin("ViaVersion") != null) {
+            adapter = new ViaVersionHook();
+            pl.getLogger().info("Loading ViaVersion support ...");
+        }
+        playerVersionAdapter = adapter == null ? new DefaultVersionHook() : adapter;
     }
 
     public static IPlayerVersion getPlayerVersionAdapter() {

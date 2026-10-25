@@ -74,16 +74,16 @@ public interface PacketType {
 	
 	public static enum Handshake implements PacketType {
 		
-		IS_SET_PROTOCOL("InSetProtocol"),
+		IS_SET_PROTOCOL("InSetProtocol", "ClientIntentionPacket"),
 		UNSET("Unset");
-		
+
 		private final String packetName, fullName;
 		private List<String> alias = new ArrayList<>();
-		
+
 		private Handshake(String packetName, String... alias) {
 			this.packetName = packetName;
 			for(String al : alias)
-				this.alias.add(HANDSHAKE_PREFIX + al);
+				this.alias.add(al);
 			this.fullName = HANDSHAKE_PREFIX + packetName;
 		}
 

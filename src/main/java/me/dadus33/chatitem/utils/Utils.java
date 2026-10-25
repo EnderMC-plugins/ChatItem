@@ -30,6 +30,7 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
 import me.dadus33.chatitem.ChatItem;
+import me.dadus33.chatitem.chatmanager.ChatAction;
 import me.dadus33.chatitem.chatmanager.ChatManager;
 import me.dadus33.chatitem.playerversion.PlayerVersionManager;
 import net.md_5.bungee.api.chat.BaseComponent;
@@ -178,7 +179,10 @@ public class Utils {
 				comp.append(line + "\n");
 			return createTextHover(comp.create());
 		}
-		if(Version.getVersion().isNewerOrEquals(Version.V1_13)) {
+		if(Version.getVersion().isNewerOrEquals(Version.V1_20_6)) {
+			// BungeeCord API doesn't support data components, the hover is replaced by the one created by the server before sending
+			return new HoverEvent(HoverEvent.Action.SHOW_ITEM, new Item(item.getType().getKey().toString(), item.getAmount(), null));
+		} else if(Version.getVersion().isNewerOrEquals(Version.V1_13)) {
 			return new HoverEvent(HoverEvent.Action.SHOW_ITEM, new Item(item.getType().getKey().getKey(), item.getAmount(), ItemTag.ofNbt(PacketUtils.getNbtTag(item))));
 		} else {
 			return new HoverEvent(HoverEvent.Action.SHOW_ITEM, new ComponentBuilder(ChatItem.getPlatform().stringifyItem(item)).create());
@@ -200,6 +204,21 @@ public class Utils {
 	
 	public static ClickEvent createRunCommand(String command) {
 		return new ClickEvent(ClickEvent.Action.RUN_COMMAND, command);
+	}
+
+	/**
+	 * Create the click event of the action: run the command, or copy the text
+	 * (only suggested in chat before MC 1.15)
+	 *
+	 * @param action the action of the message
+	 * @return the click event or null if nothing should happen on click
+	 */
+	public static ClickEvent createClick(ChatAction action) {
+		if (action.hasCommand())
+			return createRunCommand(action.getCommand());
+		if (action.hasCopyText())
+			return new ClickEvent(Version.getVersion().isNewerOrEquals(Version.V1_15) ? ClickEvent.Action.COPY_TO_CLIPBOARD : ClickEvent.Action.SUGGEST_COMMAND, action.getCopyText());
+		return null;
 	}
 	
 	public static boolean isInteger(String s) {

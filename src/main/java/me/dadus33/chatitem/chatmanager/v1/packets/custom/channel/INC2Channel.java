@@ -5,6 +5,7 @@ import static me.dadus33.chatitem.utils.PacketUtils.getPlayerConnection;
 import java.util.List;
 import java.util.NoSuchElementException;
 
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 import io.netty.channel.Channel;
@@ -19,7 +20,6 @@ import me.dadus33.chatitem.chatmanager.v1.packets.PacketType;
 import me.dadus33.chatitem.chatmanager.v1.packets.custom.CustomPacketManager;
 import me.dadus33.chatitem.utils.PacketUtils;
 import me.dadus33.chatitem.utils.ReflectionUtils;
-import me.dadus33.chatitem.utils.Version;
 
 public class INC2Channel extends ChannelAbstract {
 	
@@ -30,10 +30,10 @@ public class INC2Channel extends ChannelAbstract {
 		super(customPacketManager);
 		boundHandler = new ChannelInboundHandler(customPacketManager);
 		try {
-			Object mcServer = ReflectionUtils.callMethod(PacketUtils.getCraftServer(), Version.getVersion().equals(Version.V1_17) || Version.getVersion().equals(Version.V1_21_11) ? "getServer" : "b");
-			Object co = ReflectionUtils.getFirstWith(mcServer, PacketUtils.getNmsClass("MinecraftServer", "server."), PacketUtils.getNmsClass(Version.getVersion().equals(Version.V1_21_11) ? "ServerConnectionListener" : "ServerConnection", "server.network."));
+			Object mcServer = Bukkit.getServer().getClass().getMethod("getServer").invoke(Bukkit.getServer()); // CraftServer's method, same name for all mappings
+			Object co = ReflectionUtils.getFirstWith(mcServer, PacketUtils.getNmsClass("MinecraftServer", "server."), PacketUtils.getNmsClass("ServerConnectionListener", "server.network.", "ServerConnection"));
 			ChatItem.debug("co: " + co);
-			((List<ChannelFuture>) ReflectionUtils.getObject(co, Version.getVersion().equals(Version.V1_21_11) ? "channels" : "f")).forEach((channelFuture) -> {
+			((List<ChannelFuture>) ReflectionUtils.getFirstListWith(co, ChannelFuture.class)).forEach((channelFuture) -> {
 				pipeline = channelFuture.channel().pipeline();
 				pipeline.addFirst(boundHandler);
 			});
@@ -88,7 +88,7 @@ public class INC2Channel extends ChannelAbstract {
 	@Override
 	public Channel getChannel(Player p) throws Exception {
 		Object playerConnection = getPlayerConnection(p);
-		Object networkManager = ReflectionUtils.getFirstWith(playerConnection, PacketUtils.getNmsClass(Version.getVersion().isNewerOrEquals(Version.V1_21_11) ? "Connection" : "NetworkManager", "network."));
+		Object networkManager = ReflectionUtils.getFirstWith(playerConnection, PacketUtils.getNmsClass("Connection", "network.", "NetworkManager"));
 		return ReflectionUtils.getFirstWith(networkManager, Channel.class);
 	}
 
