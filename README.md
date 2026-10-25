@@ -1,12 +1,6 @@
 # ChatItem
 
-The official repository of the ChatItem Spigot/Bukkit plugin.
-
-You can:
-
-- [Download latest dev build](https://nightly.link/dadus33-plugins/ChatItem/workflows/build/v2/ChatItem.jar.zip)
-- [ ![Come on discord](https://img.shields.io/badge/chat-on_discord-7289da.svg) ](https://discord.gg/yng5PPf62h)
-- [Check the wiki](https://github.com/dadus33-plugins/ChatItem/wiki)
+You can [Check the wiki](https://github.com/dadus33-plugins/ChatItem/wiki)
 
 # Item doesn't show up well in chat
 
